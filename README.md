@@ -13,10 +13,17 @@ A single-file web app to track employee attendance for a small shop (< 10 employ
 
 Open the hosted page (GitHub Pages) on the tablet/phone at the shop entry and allow camera access. Add employees in the **Employees** tab, then use the main screen to clock in/out.
 
-## Data storage
+## Data storage & security
 
-All data (records in localStorage, photos in IndexedDB) is stored **locally in the browser of the device** — there is no server database. Use the same device and browser consistently, and don't clear site data. Export the monthly Excel regularly as a backup.
+Data lives in a [Supabase](https://supabase.com) free-tier project: employees and attendance records in Postgres, clock-in/out photos in a private storage bucket. The whole site requires sign-in (Supabase Auth); the Records, Report and Employees tabs are additionally locked behind an admin password re-entry, so employees at the shared tablet can only clock in/out.
+
+### One-time setup
+
+1. Create a free project at supabase.com.
+2. Run `supabase-setup.sql` in the project's SQL Editor.
+3. Create the admin login: Authentication → Users → Add user (email + password, check "Auto Confirm User").
+4. Paste the project URL and anon public key into the CONFIG block at the top of `index.html`.
 
 ## Tech
 
-Plain HTML/CSS/JS, no build step. [SheetJS](https://sheetjs.com/) via CDN for Excel export (falls back to CSV when offline).
+Plain HTML/CSS/JS, no build step. Supabase JS v2 and [SheetJS](https://sheetjs.com/) via CDN.

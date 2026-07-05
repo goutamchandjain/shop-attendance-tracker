@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Shop Attendance Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -12,9 +13,9 @@
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink);}
-  header{background:var(--card); padding:14px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10;}
+  header{background:var(--card); padding:14px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; gap:10px;}
   header h1{font-size:18px;}
-  #clock{font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  #clock{font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums;}
   nav{display:flex; background:var(--card); border-bottom:1px solid var(--border);}
   nav button{flex:1; padding:12px 4px; border:none; background:none; font-size:14px; color:var(--muted); border-bottom:3px solid transparent; cursor:pointer;}
   nav button.active{color:var(--blue); border-bottom-color:var(--blue); font-weight:600;}
@@ -32,47 +33,57 @@
   .btn.ghost{background:none; color:var(--blue); border:1px solid var(--blue);}
   .btn.small{padding:6px 12px; font-size:13px; border-radius:8px;}
   .btn:disabled{opacity:.5;}
-  /* camera modal */
-  #camModal{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:16px;}
-  #camModal.open{display:flex;}
+  #camModal, #loginModal, #adminModal{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:16px;}
+  #camModal.open, #loginModal.open, #adminModal.open{display:flex;}
   #camModal h2{color:#fff; margin-bottom:12px; font-size:18px; text-align:center;}
   #video{width:100%; max-width:420px; border-radius:12px; background:#000; transform:scaleX(-1);}
   #camBtns{margin-top:16px; display:flex; gap:12px;}
-  #camError{color:#ffb3b3; margin-top:10px; text-align:center; font-size:14px;}
+  .modal-err{color:#ffb3b3; margin-top:10px; text-align:center; font-size:14px; max-width:340px;}
+  .auth-card{background:var(--card); border-radius:14px; padding:24px; width:100%; max-width:360px;}
+  .auth-card h2{font-size:18px; margin-bottom:14px;}
+  .auth-card input{margin-bottom:10px;}
+  .auth-card .modal-err{color:var(--red);}
   table{width:100%; border-collapse:collapse; font-size:14px;}
   th,td{padding:8px 6px; border-bottom:1px solid var(--border); text-align:left;}
   th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase;}
   td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
   .photo-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:pointer; background:#ddd;}
-  input[type=text], input[type=month], input[type=date], input[type=time]{padding:10px; border:1px solid var(--border); border-radius:8px; font-size:15px; width:100%;}
+  input[type=text], input[type=email], input[type=password], input[type=month], input[type=date]{padding:10px; border:1px solid var(--border); border-radius:8px; font-size:15px; width:100%;}
   .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
   .row > *{flex:0 0 auto;}
   .grow{flex:1 1 auto !important;}
   .muted{color:var(--muted); font-size:13px;}
   .open-session{color:var(--green); font-weight:600;}
-  .missing{color:var(--red); font-weight:600;}
   #photoView{position:fixed; inset:0; background:rgba(0,0,0,.9); display:none; align-items:center; justify-content:center; z-index:110; cursor:pointer;}
   #photoView.open{display:flex;}
   #photoView img{max-width:92%; max-height:92%; border-radius:12px;}
   #reportTableWrap{overflow-x:auto;}
   #reportTable th, #reportTable td{white-space:nowrap;}
-  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:12px 22px; border-radius:10px; font-size:15px; z-index:120; opacity:0; transition:opacity .25s; pointer-events:none;}
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:12px 22px; border-radius:10px; font-size:15px; z-index:120; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90%;}
   .toast.show{opacity:1;}
   h3{font-size:16px; margin-bottom:10px;}
+  #busy{position:fixed; top:0; left:0; right:0; height:3px; background:var(--blue); display:none; z-index:130; animation:busy 1s linear infinite;}
+  @keyframes busy{0%{transform:scaleX(.1); transform-origin:left}50%{transform:scaleX(1)}100%{transform:scaleX(.1); transform-origin:right}}
 </style>
 </head>
 <body>
 
+<div id="busy"></div>
+
 <header>
   <h1>Shop Attendance</h1>
-  <div id="clock"></div>
+  <div class="row" style="gap:8px">
+    <div id="clock"></div>
+    <button class="btn small ghost" id="btnLock" style="display:none">🔒 Lock</button>
+    <button class="btn small ghost" id="btnLogout" style="display:none">Sign out</button>
+  </div>
 </header>
 
 <nav>
   <button data-tab="home" class="active">Clock In/Out</button>
-  <button data-tab="records">Records</button>
-  <button data-tab="report">Monthly Report</button>
-  <button data-tab="employees">Employees</button>
+  <button data-tab="records">Records 🔒</button>
+  <button data-tab="report">Report 🔒</button>
+  <button data-tab="employees">Employees 🔒</button>
 </nav>
 
 <main>
@@ -80,7 +91,7 @@
   <section id="tab-home">
     <p class="muted" style="margin-bottom:12px">Tap your name to clock in or out. Your photo will be captured.</p>
     <div class="emp-grid" id="empGrid"></div>
-    <p class="muted" id="homeEmpty" style="display:none; margin-top:10px">No employees yet — add them in the Employees tab.</p>
+    <p class="muted" id="homeEmpty" style="display:none; margin-top:10px">No employees yet — ask the admin to add them.</p>
   </section>
 
   <!-- RECORDS -->
@@ -132,6 +143,31 @@
   </section>
 </main>
 
+<!-- Login -->
+<div id="loginModal">
+  <div class="auth-card">
+    <h2>Sign in</h2>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
+    <button class="btn green" id="btnLogin" style="width:100%">Sign in</button>
+    <p class="modal-err" id="loginErr" style="margin:10px auto 0"></p>
+  </div>
+</div>
+
+<!-- Admin unlock -->
+<div id="adminModal">
+  <div class="auth-card">
+    <h2>Admin unlock</h2>
+    <p class="muted" style="margin-bottom:10px">Enter the admin password to open this section.</p>
+    <input type="password" id="adminPass" placeholder="Password">
+    <div class="row">
+      <button class="btn green grow" id="btnUnlock">Unlock</button>
+      <button class="btn red" id="btnUnlockCancel">Cancel</button>
+    </div>
+    <p class="modal-err" id="adminErr" style="margin:10px auto 0"></p>
+  </div>
+</div>
+
 <!-- Camera modal -->
 <div id="camModal">
   <h2 id="camTitle"></h2>
@@ -140,7 +176,7 @@
     <button class="btn green" id="btnCapture">📷 Capture</button>
     <button class="btn red" id="btnCamCancel">Cancel</button>
   </div>
-  <p id="camError"></p>
+  <p class="modal-err" id="camError"></p>
 </div>
 
 <!-- Photo viewer -->
@@ -150,169 +186,268 @@
 
 <script>
 'use strict';
-/* ---------- storage ---------- */
-const LS_EMP = 'att_employees', LS_REC = 'att_records';
-const load = (k) => JSON.parse(localStorage.getItem(k) || '[]');
-const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-let employees = load(LS_EMP);   // {id, name, active}
-let records   = load(LS_REC);   // {id, empId, date:'YYYY-MM-DD', in:ms, out:ms|null, inPhoto, outPhoto}
+/* ================= CONFIG — paste your Supabase project values ================= */
+const SUPABASE_URL      = 'PASTE_YOUR_SUPABASE_URL';       // e.g. https://abcdefgh.supabase.co
+const SUPABASE_ANON_KEY = 'PASTE_YOUR_SUPABASE_ANON_KEY';  // Project Settings -> API Keys -> anon public
+/* =============================================================================== */
 
-/* IndexedDB for photos */
-let db;
-const dbReady = new Promise((res, rej) => {
-  const rq = indexedDB.open('att_photos', 1);
-  rq.onupgradeneeded = () => rq.result.createObjectStore('photos', {keyPath:'id'});
-  rq.onsuccess = () => { db = rq.result; res(); };
-  rq.onerror  = () => rej(rq.error);
-});
-async function putPhoto(id, dataUrl){
-  await dbReady;
-  return new Promise((res, rej) => {
-    const tx = db.transaction('photos','readwrite');
-    tx.objectStore('photos').put({id, dataUrl});
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
+const $ = id => document.getElementById(id);
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
 }
-async function getPhoto(id){
-  if(!id) return null;
-  await dbReady;
-  return new Promise((res) => {
-    const rq = db.transaction('photos').objectStore('photos').get(id);
-    rq.onsuccess = () => res(rq.result ? rq.result.dataUrl : null);
-    rq.onerror = () => res(null);
-  });
+function busy(on){ $('busy').style.display = on ? 'block' : 'none'; }
+
+if(SUPABASE_URL.startsWith('PASTE')){
+  document.body.innerHTML = '<div style="padding:40px; font-family:sans-serif"><h2>Not configured</h2><p>Supabase URL and anon key have not been set in index.html yet.</p></div>';
+  throw new Error('Supabase not configured');
 }
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- state ---------- */
+let employees = [];         // {id, name, active}
+let openSessions = {};      // emp_id -> open record
+let adminUnlocked = false;
+const ADMIN_TABS = ['records','report','employees'];
 
 /* ---------- helpers ---------- */
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const pad = n => String(n).padStart(2,'0');
 const dateStr = (d=new Date()) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-const fmtTime = ms => ms ? new Date(ms).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
 function fmtHours(h){
   if(h == null) return '—';
-  const m = Math.round(h*60), hh = Math.floor(m/60), mm = m%60;
-  return `${hh}:${pad(mm)}`;
+  const m = Math.round(h*60);
+  return `${Math.floor(m/60)}:${pad(m%60)}`;
 }
-function recHours(r){ return r.out ? Math.max(0,(r.out - r.in)/3600000) : null; }
-function openSession(empId){ return records.find(r => r.empId === empId && !r.out); }
-function toast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2600);
+function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }
+async function signedUrl(path){
+  if(!path) return null;
+  const {data} = await sb.storage.from('photos').createSignedUrl(path, 3600);
+  return data ? data.signedUrl : null;
 }
 
+/* ---------- auth ---------- */
+async function initAuth(){
+  const {data:{session}} = await sb.auth.getSession();
+  setAuthUI(!!session);
+  if(session) await refreshAll();
+}
+function setAuthUI(loggedIn){
+  $('loginModal').classList.toggle('open', !loggedIn);
+  $('btnLogout').style.display = loggedIn ? '' : 'none';
+  $('btnLock').style.display = loggedIn && adminUnlocked ? '' : 'none';
+}
+$('btnLogin').onclick = async () => {
+  const email = $('loginEmail').value.trim(), pass = $('loginPass').value;
+  if(!email || !pass) return;
+  busy(true); $('loginErr').textContent = '';
+  const {error} = await sb.auth.signInWithPassword({email, password:pass});
+  busy(false);
+  if(error){ $('loginErr').textContent = error.message; return; }
+  $('loginPass').value = '';
+  setAuthUI(true);
+  await refreshAll();
+};
+$('loginPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnLogin').click(); });
+$('btnLogout').onclick = async () => {
+  if(!confirm('Sign out? The tablet will need the password to use the app again.')) return;
+  await sb.auth.signOut();
+  adminUnlocked = false;
+  location.reload();
+};
+
+/* admin lock */
+let pendingTab = null;
+function requestAdmin(tab){
+  pendingTab = tab;
+  $('adminErr').textContent = ''; $('adminPass').value = '';
+  $('adminModal').classList.add('open');
+  $('adminPass').focus();
+}
+$('btnUnlockCancel').onclick = () => { $('adminModal').classList.remove('open'); pendingTab = null; };
+$('btnUnlock').onclick = async () => {
+  const pass = $('adminPass').value;
+  if(!pass) return;
+  busy(true); $('adminErr').textContent = '';
+  const {data:{user}} = await sb.auth.getUser();
+  const {error} = await sb.auth.signInWithPassword({email:user.email, password:pass});
+  busy(false);
+  if(error){ $('adminErr').textContent = 'Wrong password'; return; }
+  adminUnlocked = true;
+  $('adminModal').classList.remove('open');
+  $('btnLock').style.display = '';
+  if(pendingTab) switchTab(pendingTab);
+  pendingTab = null;
+};
+$('adminPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnUnlock').click(); });
+$('btnLock').onclick = () => {
+  adminUnlocked = false;
+  $('btnLock').style.display = 'none';
+  switchTab('home');
+  toast('Admin sections locked');
+};
+
 /* ---------- tabs ---------- */
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
-  b.classList.add('active');
+function switchTab(tab){
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   ['home','records','report','employees'].forEach(t =>
-    document.getElementById('tab-'+t).style.display = (t === b.dataset.tab) ? '' : 'none');
-  if(b.dataset.tab === 'records') renderRecords();
-  if(b.dataset.tab === 'report') renderReport();
-  if(b.dataset.tab === 'employees') renderEmployees();
+    $('tab-'+t).style.display = (t === tab) ? '' : 'none');
+  if(tab === 'records') renderRecords();
+  if(tab === 'report') renderReport();
+  if(tab === 'employees') renderEmployees();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  const tab = b.dataset.tab;
+  if(ADMIN_TABS.includes(tab) && !adminUnlocked) return requestAdmin(tab);
+  switchTab(tab);
 });
 
 /* ---------- live clock ---------- */
 setInterval(() => {
-  document.getElementById('clock').textContent = new Date().toLocaleString([], {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  $('clock').textContent = new Date().toLocaleString([], {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
 }, 1000);
+
+/* ---------- data ---------- */
+async function refreshAll(){
+  busy(true);
+  try{
+    const [empRes, openRes] = await Promise.all([
+      sb.from('employees').select('*').order('created_at'),
+      sb.from('records').select('*').is('clock_out', null)
+    ]);
+    if(empRes.error) throw empRes.error;
+    if(openRes.error) throw openRes.error;
+    employees = empRes.data;
+    openSessions = {};
+    openRes.data.forEach(r => openSessions[r.emp_id] = r);
+    renderHome();
+  }catch(err){ toast('Load failed: ' + err.message); }
+  busy(false);
+}
 
 /* ---------- home ---------- */
 function renderHome(){
-  const grid = document.getElementById('empGrid');
+  const grid = $('empGrid');
   grid.innerHTML = '';
-  const active = employees.filter(e => e.active !== false);
-  document.getElementById('homeEmpty').style.display = active.length ? 'none' : '';
+  const active = employees.filter(e => e.active);
+  $('homeEmpty').style.display = active.length ? 'none' : '';
   active.forEach(e => {
-    const open = openSession(e.id);
+    const open = openSessions[e.id];
     const div = document.createElement('div');
     div.className = 'emp-tile' + (open ? ' in' : '');
-    div.innerHTML = `<div class="name"></div><div class="status">${open ? 'IN since ' + fmtTime(open.in) + '<br>Tap to clock OUT' : 'Tap to clock IN'}</div>`;
+    div.innerHTML = `<div class="name"></div><div class="status">${open ? 'IN since ' + fmtTime(open.clock_in) + '<br>Tap to clock OUT' : 'Tap to clock IN'}</div>`;
     div.querySelector('.name').textContent = e.name;
     div.onclick = () => startCapture(e);
     grid.appendChild(div);
   });
 }
 
-/* ---------- camera ---------- */
+/* ---------- camera + clock in/out ---------- */
 let stream = null, pendingEmp = null;
 async function startCapture(emp){
   pendingEmp = emp;
-  const open = openSession(emp.id);
-  document.getElementById('camTitle').textContent = `${emp.name} — Clock ${open ? 'OUT' : 'IN'}`;
-  document.getElementById('camError').textContent = '';
-  document.getElementById('camModal').classList.add('open');
-  document.getElementById('btnCapture').disabled = true;
+  const open = openSessions[emp.id];
+  $('camTitle').textContent = `${emp.name} — Clock ${open ? 'OUT' : 'IN'}`;
+  $('camError').textContent = '';
+  $('camModal').classList.add('open');
+  $('btnCapture').disabled = true;
   try{
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}}, audio:false});
-    document.getElementById('video').srcObject = stream;
-    document.getElementById('btnCapture').disabled = false;
+    $('video').srcObject = stream;
+    $('btnCapture').disabled = false;
   }catch(err){
-    document.getElementById('camError').textContent = 'Camera unavailable: ' + err.message + '. Check camera permission (page must be opened via https:// or file://, not plain http).';
+    $('camError').textContent = 'Camera unavailable: ' + err.message;
   }
 }
 function stopCam(){
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
-  document.getElementById('camModal').classList.remove('open');
+  $('camModal').classList.remove('open');
   pendingEmp = null;
 }
-document.getElementById('btnCamCancel').onclick = stopCam;
-document.getElementById('btnCapture').onclick = async () => {
+$('btnCamCancel').onclick = stopCam;
+$('btnCapture').onclick = async () => {
   if(!pendingEmp || !stream) return;
-  const video = document.getElementById('video');
+  const video = $('video');
   const c = document.createElement('canvas');
   const scale = 320 / video.videoWidth;
   c.width = 320; c.height = Math.round(video.videoHeight * scale);
   c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-  const dataUrl = c.toDataURL('image/jpeg', 0.7);
-  const photoId = uid();
-  await putPhoto(photoId, dataUrl);
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.7));
+  const emp = pendingEmp;
+  $('btnCapture').disabled = true;
+  busy(true);
+  try{
+    const path = `${emp.id}/${Date.now()}.jpg`;
+    const up = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg'});
+    if(up.error) throw up.error;
 
-  const emp = pendingEmp, now = Date.now(), open = openSession(emp.id);
-  if(open){
-    open.out = now; open.outPhoto = photoId;
-    save(LS_REC, records);
-    toast(`${emp.name} clocked OUT — ${fmtHours(recHours(open))} hrs today`);
-  }else{
-    records.push({id:uid(), empId:emp.id, date:dateStr(), in:now, out:null, inPhoto:photoId, outPhoto:null});
-    save(LS_REC, records);
-    toast(`${emp.name} clocked IN at ${fmtTime(now)}`);
+    const open = openSessions[emp.id];
+    const nowIso = new Date().toISOString();
+    if(open){
+      const {error} = await sb.from('records')
+        .update({clock_out: nowIso, out_photo: path})
+        .eq('id', open.id);
+      if(error) throw error;
+      delete openSessions[emp.id];
+      toast(`${emp.name} clocked OUT — ${fmtHours((Date.now() - new Date(open.clock_in))/3600000)} hrs`);
+    }else{
+      const {data, error} = await sb.from('records')
+        .insert({emp_id: emp.id, date: dateStr(), clock_in: nowIso, in_photo: path})
+        .select().single();
+      if(error) throw error;
+      openSessions[emp.id] = data;
+      toast(`${emp.name} clocked IN at ${fmtTime(nowIso)}`);
+    }
+    stopCam();
+    renderHome();
+  }catch(err){
+    $('camError').textContent = 'Failed: ' + err.message + ' — check internet and try again.';
+    $('btnCapture').disabled = false;
   }
-  stopCam();
-  renderHome();
+  busy(false);
 };
 
 /* ---------- employees ---------- */
-document.getElementById('btnAddEmp').onclick = () => {
-  const inp = document.getElementById('newEmpName');
-  const name = inp.value.trim();
+$('btnAddEmp').onclick = async () => {
+  const name = $('newEmpName').value.trim();
   if(!name) return;
-  employees.push({id:uid(), name, active:true});
-  save(LS_EMP, employees);
-  inp.value = '';
-  renderEmployees(); renderHome();
+  busy(true);
+  const {error} = await sb.from('employees').insert({name});
+  busy(false);
+  if(error) return toast('Failed: ' + error.message);
+  $('newEmpName').value = '';
+  await refreshAll();
+  renderEmployees();
 };
 function renderEmployees(){
   const tb = document.querySelector('#empTable tbody');
   tb.innerHTML = '';
-  document.getElementById('empEmpty').style.display = employees.length ? 'none' : '';
+  $('empEmpty').style.display = employees.length ? 'none' : '';
   employees.forEach(e => {
     const tr = document.createElement('tr');
     const tdName = document.createElement('td');
-    tdName.textContent = e.name + (e.active === false ? ' (inactive)' : '');
+    tdName.textContent = e.name + (e.active ? '' : ' (inactive)');
     const tdBtns = document.createElement('td');
     tdBtns.style.textAlign = 'right';
     const bRen = document.createElement('button');
     bRen.className = 'btn small ghost'; bRen.textContent = 'Rename';
-    bRen.onclick = () => {
+    bRen.onclick = async () => {
       const n = prompt('New name', e.name);
-      if(n && n.trim()){ e.name = n.trim(); save(LS_EMP, employees); renderEmployees(); renderHome(); }
+      if(!n || !n.trim()) return;
+      const {error} = await sb.from('employees').update({name:n.trim()}).eq('id', e.id);
+      if(error) return toast('Failed: ' + error.message);
+      await refreshAll(); renderEmployees();
     };
     const bTog = document.createElement('button');
-    bTog.className = 'btn small ' + (e.active === false ? 'green' : 'red');
+    bTog.className = 'btn small ' + (e.active ? 'red' : 'green');
     bTog.style.marginLeft = '8px';
-    bTog.textContent = e.active === false ? 'Activate' : 'Deactivate';
-    bTog.onclick = () => { e.active = e.active === false; save(LS_EMP, employees); renderEmployees(); renderHome(); };
+    bTog.textContent = e.active ? 'Deactivate' : 'Activate';
+    bTog.onclick = async () => {
+      const {error} = await sb.from('employees').update({active: !e.active}).eq('id', e.id);
+      if(error) return toast('Failed: ' + error.message);
+      await refreshAll(); renderEmployees();
+    };
     tdBtns.append(bRen, bTog);
     tr.append(tdName, tdBtns);
     tb.appendChild(tr);
@@ -320,48 +455,45 @@ function renderEmployees(){
 }
 
 /* ---------- records ---------- */
-const recDate = document.getElementById('recDate');
+const recDate = $('recDate');
 recDate.value = dateStr();
 recDate.onchange = renderRecords;
-async function showPhoto(id){
-  const url = await getPhoto(id);
+async function showPhoto(path){
+  const url = await signedUrl(path);
   if(!url) return toast('Photo not found');
-  document.getElementById('photoViewImg').src = url;
-  document.getElementById('photoView').classList.add('open');
+  $('photoViewImg').src = url;
+  $('photoView').classList.add('open');
+}
+function photoCell(path){
+  const td = document.createElement('td');
+  if(path){
+    const img = document.createElement('img');
+    img.className = 'photo-thumb';
+    signedUrl(path).then(u => { if(u) img.src = u; });
+    img.onclick = () => showPhoto(path);
+    td.appendChild(img);
+  }
+  return td;
 }
 async function renderRecords(){
   const tb = document.querySelector('#recTable tbody');
   tb.innerHTML = '';
-  const day = recDate.value;
-  const list = records.filter(r => r.date === day).sort((a,b) => a.in - b.in);
-  document.getElementById('recEmpty').style.display = list.length ? 'none' : '';
+  busy(true);
+  const {data:list, error} = await sb.from('records').select('*')
+    .eq('date', recDate.value).order('clock_in');
+  busy(false);
+  if(error) return toast('Load failed: ' + error.message);
+  $('recEmpty').style.display = list.length ? 'none' : '';
   for(const r of list){
-    const emp = employees.find(e => e.id === r.empId);
+    const emp = employees.find(e => e.id === r.emp_id);
     const tr = document.createElement('tr');
 
     const tdName = document.createElement('td');
     tdName.textContent = emp ? emp.name : '?';
-
-    const tdIn = document.createElement('td'); tdIn.textContent = fmtTime(r.in);
-    const tdInP = document.createElement('td');
-    if(r.inPhoto){
-      const img = document.createElement('img');
-      img.className = 'photo-thumb';
-      getPhoto(r.inPhoto).then(u => { if(u) img.src = u; });
-      img.onclick = () => showPhoto(r.inPhoto);
-      tdInP.appendChild(img);
-    }
+    const tdIn = document.createElement('td'); tdIn.textContent = fmtTime(r.clock_in);
     const tdOut = document.createElement('td');
-    if(r.out) tdOut.textContent = fmtTime(r.out);
-    else { tdOut.innerHTML = '<span class="open-session">still IN</span>'; }
-    const tdOutP = document.createElement('td');
-    if(r.outPhoto){
-      const img = document.createElement('img');
-      img.className = 'photo-thumb';
-      getPhoto(r.outPhoto).then(u => { if(u) img.src = u; });
-      img.onclick = () => showPhoto(r.outPhoto);
-      tdOutP.appendChild(img);
-    }
+    if(r.clock_out) tdOut.textContent = fmtTime(r.clock_out);
+    else tdOut.innerHTML = '<span class="open-session">still IN</span>';
     const tdH = document.createElement('td');
     tdH.className = 'num'; tdH.textContent = fmtHours(recHours(r));
 
@@ -372,21 +504,22 @@ async function renderRecords(){
     bEdit.onclick = () => editRecord(r);
     const bDel = document.createElement('button');
     bDel.className = 'btn small red'; bDel.style.marginLeft = '6px'; bDel.textContent = '✕';
-    bDel.onclick = () => {
-      if(confirm('Delete this record?')){
-        records = records.filter(x => x.id !== r.id);
-        save(LS_REC, records); renderRecords(); renderHome();
-      }
+    bDel.onclick = async () => {
+      if(!confirm('Delete this record?')) return;
+      const {error} = await sb.from('records').delete().eq('id', r.id);
+      if(error) return toast('Failed: ' + error.message);
+      sb.storage.from('photos').remove([r.in_photo, r.out_photo].filter(Boolean));
+      await refreshAll(); renderRecords();
     };
     tdEdit.append(bEdit, bDel);
-    tr.append(tdName, tdIn, tdInP, tdOut, tdOutP, tdH, tdEdit);
+    tr.append(tdName, tdIn, photoCell(r.in_photo), tdOut, photoCell(r.out_photo), tdH, tdEdit);
     tb.appendChild(tr);
   }
 }
-function editRecord(r){
-  const inT = prompt('IN time (HH:MM, 24h)', new Date(r.in).toTimeString().slice(0,5));
+async function editRecord(r){
+  const inT = prompt('IN time (HH:MM, 24h)', new Date(r.clock_in).toTimeString().slice(0,5));
   if(inT === null) return;
-  const outCur = r.out ? new Date(r.out).toTimeString().slice(0,5) : '';
+  const outCur = r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '';
   const outT = prompt('OUT time (HH:MM, 24h) — leave empty if still in', outCur);
   if(outT === null) return;
   const mk = (t) => {
@@ -394,54 +527,62 @@ function editRecord(r){
     if(!m) return null;
     const d = new Date(r.date + 'T00:00:00');
     d.setHours(+m[1], +m[2], 0, 0);
-    return d.getTime();
+    return d;
   };
-  const inMs = mk(inT);
-  if(inMs === null) return toast('Invalid IN time');
-  let outMs = null;
+  const inD = mk(inT);
+  if(!inD) return toast('Invalid IN time');
+  let outD = null;
   if(outT.trim() !== ''){
-    outMs = mk(outT);
-    if(outMs === null) return toast('Invalid OUT time');
-    if(outMs < inMs) outMs += 86400000; // overnight shift
+    outD = mk(outT);
+    if(!outD) return toast('Invalid OUT time');
+    if(outD < inD) outD = new Date(outD.getTime() + 86400000); // overnight shift
   }
-  r.in = inMs; r.out = outMs;
-  save(LS_REC, records); renderRecords(); renderHome();
+  busy(true);
+  const {error} = await sb.from('records')
+    .update({clock_in: inD.toISOString(), clock_out: outD ? outD.toISOString() : null})
+    .eq('id', r.id);
+  busy(false);
+  if(error) return toast('Failed: ' + error.message);
+  await refreshAll(); renderRecords();
 }
 
 /* ---------- monthly report ---------- */
-const repMonth = document.getElementById('repMonth');
+const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
 repMonth.onchange = renderReport;
 
-function monthData(){
+async function monthData(){
   const ym = repMonth.value; // YYYY-MM
   const [y, m] = ym.split('-').map(Number);
   const days = new Date(y, m, 0).getDate();
-  const emps = employees.filter(e =>
-    e.active !== false || records.some(r => r.date.startsWith(ym) && r.empId === e.id));
-  // hours[empId][day] = total hours that day (null if no record, -1 if open session)
-  const hours = {};
+  const {data:recs, error} = await sb.from('records').select('*')
+    .gte('date', `${ym}-01`).lte('date', `${ym}-${pad(days)}`);
+  if(error){ toast('Load failed: ' + error.message); return null; }
+  const emps = employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
+  const hours = {}; // hours[empId][day] = total hours (null none, -1 open session)
   emps.forEach(e => hours[e.id] = Array(days+1).fill(null));
-  records.filter(r => r.date.startsWith(ym)).forEach(r => {
-    if(!hours[r.empId]) return;
+  recs.forEach(r => {
+    if(!hours[r.emp_id]) return;
     const d = Number(r.date.slice(8,10));
     const h = recHours(r);
-    if(h === null){ if(hours[r.empId][d] === null) hours[r.empId][d] = -1; }
-    else hours[r.empId][d] = (hours[r.empId][d] === null || hours[r.empId][d] === -1 ? 0 : hours[r.empId][d]) + h;
+    if(h === null){ if(hours[r.emp_id][d] === null) hours[r.emp_id][d] = -1; }
+    else hours[r.emp_id][d] = (hours[r.emp_id][d] === null || hours[r.emp_id][d] === -1 ? 0 : hours[r.emp_id][d]) + h;
   });
-  return {ym, y, m, days, emps, hours};
+  return {ym, days, emps, hours, hasData: recs.length > 0};
 }
 
-function renderReport(){
-  const {days, emps, hours, ym} = monthData();
-  const thead = document.querySelector('#reportTable thead');
-  const tbody = document.querySelector('#reportTable tbody');
-  const hasData = records.some(r => r.date.startsWith(ym));
-  document.getElementById('repEmpty').style.display = hasData ? 'none' : '';
+async function renderReport(){
+  busy(true);
+  const md = await monthData();
+  busy(false);
+  if(!md) return;
+  const {days, emps, hours, hasData} = md;
+  $('repEmpty').style.display = hasData ? 'none' : '';
   let h = '<tr><th>Employee</th>';
   for(let d=1; d<=days; d++) h += `<th class="num">${d}</th>`;
   h += '<th class="num">Days</th><th class="num">Total hrs</th></tr>';
-  thead.innerHTML = h;
+  document.querySelector('#reportTable thead').innerHTML = h;
+  const tbody = document.querySelector('#reportTable tbody');
   tbody.innerHTML = '';
   emps.forEach(e => {
     let total = 0, daysWorked = 0, row = '';
@@ -459,8 +600,12 @@ function renderReport(){
   });
 }
 
-document.getElementById('btnExport').onclick = () => {
-  const {days, emps, hours, ym} = monthData();
+$('btnExport').onclick = async () => {
+  busy(true);
+  const md = await monthData();
+  busy(false);
+  if(!md) return;
+  const {ym, days, emps, hours} = md;
   const header = ['Employee', ...Array.from({length:days}, (_,i) => `${ym}-${pad(i+1)}`), 'Days worked', 'Total hours'];
   const rows = emps.map(e => {
     let total = 0, daysWorked = 0;
@@ -473,25 +618,15 @@ document.getElementById('btnExport').onclick = () => {
     }
     return [e.name, ...cells, daysWorked, Number(total.toFixed(2))];
   });
-  if(typeof XLSX !== 'undefined'){
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [{wch:18}, ...Array(days).fill({wch:10}), {wch:11}, {wch:11}];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, ym);
-    XLSX.writeFile(wb, `attendance-${ym}.xlsx`);
-  }else{
-    // offline fallback: CSV (opens in Excel)
-    const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-    a.download = `attendance-${ym}.csv`;
-    a.click();
-    toast('Offline — exported CSV instead of Excel');
-  }
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:18}, ...Array(days).fill({wch:10}), {wch:11}, {wch:11}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, ym);
+  XLSX.writeFile(wb, `attendance-${ym}.xlsx`);
 };
 
 /* ---------- init ---------- */
-renderHome();
+initAuth();
 </script>
 </body>
 </html>
